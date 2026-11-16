@@ -69,3 +69,14 @@ CORRELATION_LIMIT = 0.9
 FIGURES_DIR = REPORTS_DIR / "figures"
 CONTROL_LIMITS_FILE = REPORTS_DIR / "control_limits.csv"
 STAGE_RANKING_FILE = REPORTS_DIR / "ranking_by_stage.csv"
+
+# --- Process capability (step 5) -------------------------------------------
+# ASSUMPTION: SECOM publishes no specification limits. As a stand-in we use
+#     LSL, USL = mean of passing runs -/+ SPEC_SIGMA_MULTIPLIER * their sigma
+# on the idea that values seen on passing runs are acceptable. These are NOT
+# real engineering specs. With a multiplier of 3 the spec window is 6 sigma
+# wide by our own choice, so Cp near 1 is expected by construction. Only
+# comparisons between features, and Cp versus Cpk, carry meaning.
+SPEC_SIGMA_MULTIPLIER = 3.0
+
+CAPABILITY_FILE = REPORTS_DIR / "capability.csv"
