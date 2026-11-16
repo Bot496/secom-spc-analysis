@@ -47,3 +47,16 @@ TOP_N_FEATURES = 10  # features reported in the ranking and exported
 TOP_N_CHARTS = 5     # features that get control charts
 
 FEATURE_RANKING_FILE = REPORTS_DIR / "feature_ranking.csv"
+
+# --- Control charts (step 4) ---------------------------------------------
+# Control limits are computed from the first runs in time order, then
+# frozen and applied to every run. 300 runs is about the first month.
+# Known weakness: this period has the highest fail rate in the dataset.
+BASELINE_RUNS = 300
+
+# When picking features to chart, skip a feature whose rank correlation
+# with a higher-ranked chart feature is above this (near-duplicate signal).
+CORRELATION_LIMIT = 0.9
+
+FIGURES_DIR = REPORTS_DIR / "figures"
+CONTROL_LIMITS_FILE = REPORTS_DIR / "control_limits.csv"
