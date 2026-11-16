@@ -2,16 +2,19 @@
 
 Run:  python src/control_charts.py   (after src/feature_ranking.py)
 
+The charts use two stages (see STAGE_2_START in config.py). Each stage has
+its own control limits, computed from the first runs of that stage.
+
 Outputs:
   reports/figures/imr_<feature>.png   one chart per feature
-  reports/control_limits.csv          limits and out-of-control counts
+  reports/control_limits.csv          limits and out-of-control counts,
+                                      one row per feature and stage
 """
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
 from config import (
-    BASELINE_RUNS,
     CLEAN_FILE,
     CONTROL_LIMITS_FILE,
     CORRELATION_LIMIT,
@@ -20,13 +23,14 @@ from config import (
     TOP_N_CHARTS,
 )
 from spc_rules import check_rules, imr_limits, moving_range, summarise_rules
+from stages import add_stage_columns
 
 # Chart colours (checked for colour-blind separation).
-COLOR_DATA = "#2a78d6"     # blue: measurements
-COLOR_OOC = "#d03b3b"      # red: out-of-control points
-COLOR_LIMIT = "#52514e"    # dark grey: centre line and control limits
+COLOR_DATA = "#2a78d6"      # blue: measurements
+COLOR_OOC = "#d03b3b"       # red: out-of-control points
+COLOR_LIMIT = "#52514e"     # dark grey: centre line and control limits
 COLOR_GRID = "#e1e0d9"
-COLOR_BASELINE = "#f0efec" # light grey band behind the baseline period
+COLOR_BASELINE = "#f0efec"  # light grey band behind each baseline period
 COLOR_TEXT = "#52514e"
 
 
@@ -52,12 +56,11 @@ def select_chart_features(ranking, data, n=TOP_N_CHARTS, limit=CORRELATION_LIMIT
     return chosen
 
 
-def spc_for_feature(data, feature, baseline_runs=BASELINE_RUNS):
-    """Compute control limits and rule violations for one feature.
+def spc_for_feature(data, feature):
+    """Compute staged control limits and rule violations for one feature.
 
-    Returns (points, limits):
-      points  one row per run that has a reading, in time order
-      limits  dictionary from imr_limits()
+    Returns one row per run that has a reading, in time order. Each row
+    carries the limits of its own stage, so a chart can draw them directly.
     """
     # Runs with no reading for this feature are left out. We do not fill
     # them in, because an invented value would look like a measurement.
@@ -65,43 +68,62 @@ def spc_for_feature(data, feature, baseline_runs=BASELINE_RUNS):
     points = points.rename(columns={feature: "value"}).reset_index(drop=True)
     points.insert(3, "feature", feature)
 
-    # Limits come from the baseline runs only, then apply to every run.
-    points["in_baseline"] = points["run_id"] <= baseline_runs
-    limits = imr_limits(points.loc[points["in_baseline"], "value"])
-
+    points = add_stage_columns(points)
     points["moving_range"] = moving_range(points["value"])
-    points["mr_ooc"] = points["moving_range"] > limits["mr_ucl"]
 
-    rules = check_rules(points["value"], limits["center"], limits["sigma"])
-    points = pd.concat([points, rules, summarise_rules(rules)], axis=1)
-    return points, limits
+    stage_tables = []
+    for _, stage_points in points.groupby("stage"):
+        stage_points = stage_points.reset_index(drop=True)
+
+        # Limits come from this stage's baseline runs only.
+        baseline = stage_points.loc[stage_points["in_baseline"], "value"]
+        limits = imr_limits(baseline)
+
+        # Write the limits on every row of the stage.
+        for name, value in limits.items():
+            stage_points[name] = value
+
+        stage_points["mr_ooc"] = stage_points["moving_range"] > limits["mr_ucl"]
+
+        # The rules run inside the stage, so a pattern such as "8 in a row"
+        # never mixes points judged against different centre lines.
+        rules = check_rules(stage_points["value"], limits["center"], limits["sigma"])
+        stage_tables.append(
+            pd.concat([stage_points, rules, summarise_rules(rules)], axis=1)
+        )
+
+    return pd.concat(stage_tables, ignore_index=True)
 
 
-def summarise_feature(points, limits, feature):
-    """One row of numbers describing the chart for a feature."""
-    monitored = points[~points["in_baseline"]]
-    ooc = points[points["ooc_flag"]]
-    in_control = points[~points["ooc_flag"]]
+def summarise_stage(stage_points):
+    """One row of numbers describing one feature in one stage."""
+    first = stage_points.iloc[0]
+    after_baseline = stage_points[~stage_points["in_baseline"]]
+    ooc = stage_points[stage_points["ooc_flag"]]
+    in_control = stage_points[~stage_points["ooc_flag"]]
 
     return {
-        "feature": feature,
-        "center": limits["center"],
-        "sigma": limits["sigma"],
-        "ucl": limits["ucl"],
-        "lcl": limits["lcl"],
-        "mr_center": limits["mr_center"],
-        "mr_ucl": limits["mr_ucl"],
-        "n_points": len(points),
-        "n_baseline": int(points["in_baseline"].sum()),
+        "feature": first["feature"],
+        "stage": first["stage"],
+        "first_run": stage_points["run_id"].min(),
+        "last_run": stage_points["run_id"].max(),
+        "center": first["center"],
+        "sigma": first["sigma"],
+        "ucl": first["ucl"],
+        "lcl": first["lcl"],
+        "mr_center": first["mr_center"],
+        "mr_ucl": first["mr_ucl"],
+        "n_points": len(stage_points),
+        "n_baseline": int(stage_points["in_baseline"].sum()),
         "n_ooc": len(ooc),
-        "ooc_rate": len(ooc) / len(points),
-        "ooc_rate_baseline": points.loc[points["in_baseline"], "ooc_flag"].mean(),
-        "ooc_rate_monitoring": monitored["ooc_flag"].mean(),
-        "n_rule_1": int(points["rule_1"].sum()),
-        "n_rule_2": int(points["rule_2"].sum()),
-        "n_rule_3": int(points["rule_3"].sum()),
-        "n_rule_4": int(points["rule_4"].sum()),
-        "n_mr_ooc": int(points["mr_ooc"].sum()),
+        "ooc_rate": len(ooc) / len(stage_points),
+        "ooc_rate_baseline": stage_points.loc[stage_points["in_baseline"], "ooc_flag"].mean(),
+        "ooc_rate_after_baseline": after_baseline["ooc_flag"].mean(),
+        "n_rule_1": int(stage_points["rule_1"].sum()),
+        "n_rule_2": int(stage_points["rule_2"].sum()),
+        "n_rule_3": int(stage_points["rule_3"].sum()),
+        "n_rule_4": int(stage_points["rule_4"].sum()),
+        "n_mr_ooc": int(stage_points["mr_ooc"].sum()),
         # Do flagged runs fail more often than unflagged runs?
         "fail_rate_ooc": (ooc["pass_fail"] == "Fail").mean(),
         "fail_rate_in_control": (in_control["pass_fail"] == "Fail").mean(),
@@ -118,16 +140,46 @@ def style_axis(ax):
     ax.tick_params(colors=COLOR_TEXT, length=0)
 
 
-def plot_imr(points, limits, feature, path, baseline_runs=BASELINE_RUNS):
+def draw_stage_lines(ax, points, columns):
+    """Shade each stage's baseline and draw its limit lines."""
+    for stage, stage_points in points.groupby("stage"):
+        first_run = stage_points["run_id"].min()
+        last_run = stage_points["run_id"].max()
+        baseline_end = stage_points.loc[stage_points["in_baseline"], "run_id"].max()
+
+        # Only the first band gets a legend entry, so it is listed once.
+        label = "Baseline period" if stage == 1 else None
+        ax.axvspan(first_run, baseline_end, color=COLOR_BASELINE, zorder=0, label=label)
+        for column in columns:
+            ax.hlines(
+                stage_points[column].iloc[0], first_run, last_run,
+                color=COLOR_LIMIT, linewidth=1,
+            )
+
+
+def limits_text(points, columns, separator):
+    """Text such as 'Stage 1: UCL 43.95  CL 11.65  LCL -20.66' per stage."""
+    labels = {"ucl": "UCL", "center": "CL", "lcl": "LCL",
+              "mr_ucl": "UCL", "mr_center": "CL"}
+    parts = []
+    for stage, stage_points in points.groupby("stage"):
+        values = "  ".join(
+            f"{labels[column]} {stage_points[column].iloc[0]:.4g}" for column in columns
+        )
+        parts.append(f"Stage {stage}: {values}")
+    return separator.join(parts)
+
+
+def plot_imr(points, feature, path):
     """Draw the Individuals chart (top) and Moving Range chart (bottom)."""
     fig, (ax_i, ax_mr) = plt.subplots(
         2, 1, figsize=(12, 7), sharex=True, height_ratios=[2, 1]
     )
     x = points["run_id"]
-    last_x = x.max()
 
     # --- Individuals chart ---
-    ax_i.axvspan(0, baseline_runs, color=COLOR_BASELINE, zorder=0)
+    i_columns = ["ucl", "center", "lcl"]
+    draw_stage_lines(ax_i, points, i_columns)
     ax_i.plot(x, points["value"], color=COLOR_DATA, linewidth=0.8, label="Measurement")
 
     ooc = points[points["ooc_flag"]]
@@ -136,29 +188,22 @@ def plot_imr(points, limits, feature, path, baseline_runs=BASELINE_RUNS):
         linewidth=0.4, zorder=3, label="Out of control (any rule)",
     )
 
-    # The three horizontal lines: upper limit, centre line, lower limit.
-    # Their values go in the title, where they cannot overlap each other.
-    for key in ["ucl", "center", "lcl"]:
-        ax_i.axhline(limits[key], color=COLOR_LIMIT, linewidth=1)
-
     ax_i.set_title(
         f"{feature}: Individuals chart  "
         f"({len(ooc)} of {len(points)} runs out of control)\n"
-        f"UCL {limits['ucl']:.4g}   CL {limits['center']:.4g}   "
-        f"LCL {limits['lcl']:.4g}",
+        f"{limits_text(points, i_columns, separator='\n')}",
         loc="left", fontsize=11, color="#0b0b0b",
     )
     ax_i.set_ylabel("Value", color=COLOR_TEXT)
-    ax_i.legend(loc="upper right", frameon=False, fontsize=9)
-    ax_i.text(
-        baseline_runs / 2, 0.97, f"Baseline: first {baseline_runs} runs",
-        transform=ax_i.get_xaxis_transform(), ha="center", va="top",
-        fontsize=9, color=COLOR_TEXT,
+    # Legend sits above the plot, on the right, so it never covers data.
+    ax_i.legend(
+        loc="lower right", bbox_to_anchor=(1, 1), ncol=3, frameon=False, fontsize=9
     )
     style_axis(ax_i)
 
     # --- Moving Range chart ---
-    ax_mr.axvspan(0, baseline_runs, color=COLOR_BASELINE, zorder=0)
+    mr_columns = ["mr_ucl", "mr_center"]
+    draw_stage_lines(ax_mr, points, mr_columns)
     ax_mr.plot(x, points["moving_range"], color=COLOR_DATA, linewidth=0.8)
 
     mr_ooc = points[points["mr_ooc"]]
@@ -167,17 +212,14 @@ def plot_imr(points, limits, feature, path, baseline_runs=BASELINE_RUNS):
         edgecolor="white", linewidth=0.4, zorder=3,
     )
 
-    for key in ["mr_ucl", "mr_center"]:
-        ax_mr.axhline(limits[key], color=COLOR_LIMIT, linewidth=1)
-
     ax_mr.set_title(
         f"Moving Range chart  ({len(mr_ooc)} above UCL)\n"
-        f"UCL {limits['mr_ucl']:.4g}   CL {limits['mr_center']:.4g}",
+        f"{limits_text(points, mr_columns, separator='      ')}",
         loc="left", fontsize=11, color="#0b0b0b",
     )
     ax_mr.set_ylabel("Moving range", color=COLOR_TEXT)
     ax_mr.set_xlabel("Run number (time order)", color=COLOR_TEXT)
-    ax_mr.set_xlim(0, last_x)
+    ax_mr.set_xlim(0, x.max())
     style_axis(ax_mr)
 
     fig.tight_layout()
@@ -196,19 +238,20 @@ def main():
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     summaries = []
     for feature in features:
-        points, limits = spc_for_feature(data, feature)
-        plot_imr(points, limits, feature, FIGURES_DIR / f"imr_{feature}.png")
-        summaries.append(summarise_feature(points, limits, feature))
+        points = spc_for_feature(data, feature)
+        plot_imr(points, feature, FIGURES_DIR / f"imr_{feature}.png")
+        for _, stage_points in points.groupby("stage"):
+            summaries.append(summarise_stage(stage_points))
 
     summary = pd.DataFrame(summaries)
     summary.to_csv(CONTROL_LIMITS_FILE, index=False)
 
-    print(f"\nBaseline: first {BASELINE_RUNS} runs")
-    columns = ["feature", "center", "sigma", "lcl", "ucl", "n_ooc", "ooc_rate",
-               "ooc_rate_baseline", "ooc_rate_monitoring"]
+    print("\nLimits and out-of-control (OOC) rates per stage:")
+    columns = ["feature", "stage", "first_run", "last_run", "center", "sigma",
+               "lcl", "ucl", "n_ooc", "ooc_rate_baseline", "ooc_rate_after_baseline"]
     print(summary[columns].round(4).to_string(index=False))
     print("\nViolations by rule, and fail rate of flagged vs unflagged runs:")
-    columns = ["feature", "n_rule_1", "n_rule_2", "n_rule_3", "n_rule_4",
+    columns = ["feature", "stage", "n_rule_1", "n_rule_2", "n_rule_3", "n_rule_4",
                "n_mr_ooc", "fail_rate_ooc", "fail_rate_in_control"]
     print(summary[columns].round(4).to_string(index=False))
     print(f"\nSaved charts to {FIGURES_DIR}")

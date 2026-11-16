@@ -49,9 +49,17 @@ TOP_N_CHARTS = 5     # features that get control charts
 FEATURE_RANKING_FILE = REPORTS_DIR / "feature_ranking.csv"
 
 # --- Control charts (step 4) ---------------------------------------------
-# Control limits are computed from the first runs in time order, then
-# frozen and applied to every run. 300 runs is about the first month.
-# Known weakness: this period has the highest fail rate in the dataset.
+# The process changed level between about run 300 and run 480 (seen on the
+# first control charts), and the fail rate dropped at the same time. One set
+# of limits cannot describe both periods, so the charts use two stages:
+#   Stage 1 = runs 1 to STAGE_2_START - 1
+#   Stage 2 = runs STAGE_2_START to the end
+# ASSUMPTION: the split at run 501 was chosen by eye, with hindsight, as the
+# point where the change had settled. It is not a documented process event.
+STAGE_2_START = 501
+
+# Each stage gets its own control limits, computed from the first
+# BASELINE_RUNS runs of that stage and then frozen for the rest of the stage.
 BASELINE_RUNS = 300
 
 # When picking features to chart, skip a feature whose rank correlation
@@ -60,3 +68,4 @@ CORRELATION_LIMIT = 0.9
 
 FIGURES_DIR = REPORTS_DIR / "figures"
 CONTROL_LIMITS_FILE = REPORTS_DIR / "control_limits.csv"
+STAGE_RANKING_FILE = REPORTS_DIR / "ranking_by_stage.csv"
