@@ -38,3 +38,12 @@ FEATURE_QUALITY_FILE = REPORTS_DIR / "feature_quality.csv"
 
 # Columns that describe a run. Every other column is a sensor feature.
 ID_COLUMNS = ["run_id", "timestamp", "pass_fail"]
+
+# --- Feature ranking (step 3) --------------------------------------------
+# False discovery rate for the Benjamini-Hochberg correction: among the
+# features we call significant, about this share may be false alarms.
+FDR_LEVEL = 0.05
+TOP_N_FEATURES = 10  # features reported in the ranking and exported
+TOP_N_CHARTS = 5     # features that get control charts
+
+FEATURE_RANKING_FILE = REPORTS_DIR / "feature_ranking.csv"
