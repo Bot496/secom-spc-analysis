@@ -25,6 +25,12 @@ def compare_pass_fail(data):
 
     rows = []
     for feature in feature_names:
+        # A feature with a single value in this data cannot be tested (every
+        # pair is a tie), so skip it. This happens when the test is run on
+        # part of the runs, where a feature may not vary at all.
+        if data[feature].nunique() <= 1:
+            continue
+
         # Split the feature's values into the two groups. Missing values
         # are simply left out of the test for this feature.
         pass_values = data.loc[~is_fail, feature].dropna()

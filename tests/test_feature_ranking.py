@@ -46,6 +46,13 @@ def test_missing_values_are_left_out():
     assert results.loc["separated", "n_fail"] == 3
 
 
+def test_constant_feature_is_skipped():
+    data = make_data()
+    data["flat"] = 7.0  # same value on every run: nothing to test
+    results = compare_pass_fail(data)
+    assert results["feature"].tolist() == ["separated", "mixed"]
+
+
 def test_benjamini_hochberg_by_hand():
     # Four tests. Adjusted p = p * 4 / position when sorted:
     #   0.01 * 4/1 = 0.04
