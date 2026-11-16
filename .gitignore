@@ -9,3 +9,6 @@ __pycache__/
 # Raw data is downloaded, not committed. Keep the empty folder itself.
 data/raw/*
 !data/raw/.gitkeep
+
+# Cleaned wide table: about 4 MB and rebuilt by src/load_clean.py
+data/processed/secom_clean.csv
