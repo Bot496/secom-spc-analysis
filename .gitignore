@@ -1,0 +1,11 @@
+# Virtual environment: rebuilt from requirements.txt, never committed
+.venv/
+
+# Python and tool caches
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Raw data is downloaded, not committed. Keep the empty folder itself.
+data/raw/*
+!data/raw/.gitkeep

@@ -1,0 +1,7 @@
+# Python packages for this project (tested with Python 3.13).
+# Versions are pinned so the results can be reproduced later.
+pandas==3.1.1       # tables: loading, joining, cleaning
+numpy==2.5.5        # fast maths on arrays
+scipy==1.18.1       # statistical tests (Mann-Whitney U)
+matplotlib==3.11.2  # control charts and other plots
+pytest==9.2.0       # runs the unit tests in tests/
