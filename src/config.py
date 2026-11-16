@@ -80,3 +80,9 @@ STAGE_RANKING_FILE = REPORTS_DIR / "ranking_by_stage.csv"
 SPEC_SIGMA_MULTIPLIER = 3.0
 
 CAPABILITY_FILE = REPORTS_DIR / "capability.csv"
+
+# --- Power BI export (step 6) ----------------------------------------------
+FACT_FILE = PROCESSED_DIR / "fact_measurements.csv"
+DIM_FEATURE_FILE = PROCESSED_DIR / "dim_feature.csv"
+FEATURE_STAGE_FILE = PROCESSED_DIR / "feature_stage_summary.csv"
+DAILY_FILE = PROCESSED_DIR / "daily_pass_rate.csv"
